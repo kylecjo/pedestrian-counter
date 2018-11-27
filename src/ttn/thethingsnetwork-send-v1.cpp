@@ -33,6 +33,7 @@
 #include <new>
 #include <vector>
 #include <algorithm>
+#include <syslog.h>
 using namespace std;
 
 // LoRaWAN Application identifier (AppEUI)
@@ -78,7 +79,7 @@ void os_getDevKey(u1_t *buf)
 }
 
 u4_t cntr = 0;
-u1_t mydata[16];
+std::vector<u1_t> mydata;
 static osjob_t sendjob;
 
 // Pin mapping
@@ -114,13 +115,13 @@ void onEvent(ev_t ev)
 // used to read data from python program
 void readData()
 {
-    char buf[16];
+    char buf[51];
     fprintf(stdout, "waiting");
-    fgets(buf, 16, stdin);
-    int i;
-    for (i = 0; i < 16; i++)
-    {
-        mydata[i] = buf[i];
+    fgets(buf, 51, stdin);
+    int i = 0;
+    while (buf[i]){
+        mydata.push_back(buf[i]);
+        i++;
     }
 }
 
@@ -138,7 +139,9 @@ static void do_send(osjob_t *j)
     else
     {
         readData();
-        LMIC_setTxData2(1, mydata, sizeof(mydata), 0);
+        u1_t arr[mydata.size()];
+        std::copy(mydata.begin(), mydata.end(), arr);
+        LMIC_setTxData2(1, arr, sizeof(arr), 0);
     }
     // Schedule a timed job to run at the given timestamp (absolute system time)
     os_setTimedCallback(j, os_getTime() + sec2osticks(15), do_send);
@@ -170,9 +173,12 @@ void setup()
     LMIC.dn2Dr = DR_SF9;
 }
 
-int main()
+int main(int argc, char** argv)
 {
-
+    int payloadLength = strlen(argv[1]);
+    if(payloadLength > 51){
+        syslog(LOG_NOTICE, "An error occured. The payload is too long\n");
+    }
     setup();
     do_send(&sendjob);
     while (1)
